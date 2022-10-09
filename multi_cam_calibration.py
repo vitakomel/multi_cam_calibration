@@ -84,6 +84,11 @@ def visualize_axes(frame, cal, rot, t):
     z_end = transform(np.array([[0], [0], [200]]), rot, t)
     z_end_pixels = convert_to_pixels(z_end, cal)
 
+    # Change the coordinate system if necessary.
+    if z_end_pixels[1] > x_end_pixels[1]:
+        z_end = transform(np.array([[0], [0], [-200]]), rot, t)
+        z_end_pixels = convert_to_pixels(z_end, cal)
+
     cv2.line(frame, base_point_pixels, x_end_pixels, (0, 0, 255), 2)
     cv2.line(frame, base_point_pixels, y_end_pixels, (0, 0, 255), 2)
     cv2.line(frame, base_point_pixels, z_end_pixels, (0, 0, 255), 2)
@@ -168,7 +173,7 @@ with contextlib.ExitStack() as stack:
 
         for id, frame in frames.items():
             chessboard_found, corners = find_chessboard(frame['rgb'], (chessboard_height, chessboard_width))
-
+            
             if not chessboard_found:
                 print('Move the chessboard.')
                 break
@@ -176,6 +181,7 @@ with contextlib.ExitStack() as stack:
             _, rot, t = cv2.solvePnP(obj_points, corners, intrinsics[id], np.zeros((4, 1)), flags=0)
             transformations[id] = {'rot': cv2.Rodrigues(rot)[0], 't': t}
             num_calibrated_devices += 1
+            # print(id)
 
 
     print('Calibration is completed.')
@@ -211,6 +217,11 @@ with contextlib.ExitStack() as stack:
                 
                 # Transform point to the world coordinate system
                 point = inv_transform(point, transformations[id]['rot'], transformations[id]['t'])
+
+                # Change z coordinate to positive value.
+                if point[2] < 0:
+                    point[2] = -point[2]
+
                 all_detections.append({'id': id, 'label': detection.label, 'point': point})
 
                 try:
@@ -249,8 +260,8 @@ with contextlib.ExitStack() as stack:
             for j in range(i, len(all_detections)):
                 det_j = all_detections[j]
 
-                # If two detections with the same label are less than 20 cm apart, consider them as a match.
-                if det_i['id'] != det_j['id'] and det_i['label'] == det_j['label'] and np.linalg.norm(det_i['point'] - det_j['point']) < 200:
+                # If two detections with the same label are less than 30 cm apart, consider them as a match.
+                if det_i['id'] != det_j['id'] and det_i['label'] == det_j['label'] and np.linalg.norm(det_i['point'] - det_j['point']) < 300:
                     matches.append(det_j['point'])
 
             # If a detection does not have a corresponding detection, do not plot it.
@@ -261,9 +272,9 @@ with contextlib.ExitStack() as stack:
                 new_old_points.append(avg[:2])
 
                 try:
-                    label = label_map[detection.label]
+                    label = label_map[det_i['label']]
                 except:
-                    label = detection.label
+                    label = det_i['label']
                 
                 ann = plt.annotate(str(label), (avg[0], avg[1]))
                 ann_list.append(ann)
